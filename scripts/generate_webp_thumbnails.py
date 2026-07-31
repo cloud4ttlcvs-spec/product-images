@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Generate deterministic WebP thumbnails beside TTL Bio image categories.
+"""Generate deterministic WebP thumbnails for the TTL Bio image library.
 
-Source examples:
-  product-images/products/item.png
-  product-images/gifts/gift.png
-  product-images/promotions/promo.jpg
+The existing repository stores many images directly at repository root, while
+future assets may use folders such as products/, gifts/, or promotions/.
 
-Generated paths:
-  product-images/thumbs/products/item.webp
-  product-images/thumbs/gifts/gift.webp
-  product-images/thumbs/promotions/promo.webp
+Path mapping examples:
+  item.png                              -> thumbs/item.webp
+  products/item.png                     -> thumbs/products/item.webp
+  product-images/products/item.png      -> product-images/thumbs/products/item.webp
 
-The script also supports category folders at repository root. It never changes the
-source images and only rewrites a thumbnail when the encoded bytes differ.
+Source images are never changed. A thumbnail is rewritten only when its encoded
+bytes differ, so repeated workflow runs do not create unnecessary commits.
 """
 
 from __future__ import annotations
@@ -25,37 +23,31 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CATEGORY_NAMES = {"products", "gifts", "promotions"}
 SOURCE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 MAX_SIZE = (480, 480)
 WEBP_QUALITY = 82
 MANIFEST_PATH = REPO_ROOT / "webp-thumbnail-manifest.json"
-IGNORED_PARTS = {".git", "node_modules", "thumbs", "dist", "build"}
+IGNORED_PARTS = {".git", ".github", "node_modules", "thumbs", "dist", "build", "scripts"}
 
 
 def is_source_file(path: Path) -> bool:
     if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
         return False
     relative_parts = path.relative_to(REPO_ROOT).parts
-    if any(part in IGNORED_PARTS for part in relative_parts):
-        return False
-    return any(part.lower() in CATEGORY_NAMES for part in relative_parts)
+    return not any(part in IGNORED_PARTS for part in relative_parts)
 
 
-def resolve_output_path(source: Path) -> Path | None:
+def resolve_output_path(source: Path) -> Path:
     relative = source.relative_to(REPO_ROOT)
     parts = list(relative.parts)
-    category_index = next(
-        (index for index, part in enumerate(parts) if part.lower() in CATEGORY_NAMES),
-        None,
-    )
-    if category_index is None:
-        return None
 
-    asset_root = REPO_ROOT.joinpath(*parts[:category_index])
-    category = parts[category_index].lower()
-    remainder = Path(*parts[category_index + 1 :]).with_suffix(".webp")
-    return asset_root / "thumbs" / category / remainder
+    # Some Cloudflare Pages builds expose a product-images/ content root. Keep
+    # thumbnails inside that same root when this structure exists.
+    if parts and parts[0].lower() == "product-images":
+        remainder = Path(*parts[1:]).with_suffix(".webp")
+        return REPO_ROOT / "product-images" / "thumbs" / remainder
+
+    return REPO_ROOT / "thumbs" / relative.with_suffix(".webp")
 
 
 def encode_thumbnail(source: Path) -> bytes:
@@ -93,7 +85,7 @@ def main() -> int:
         key=lambda item: item.as_posix().lower(),
     )
     if not sources:
-        print("No PNG/JPEG sources found under products, gifts, or promotions.", file=sys.stderr)
+        print("No PNG/JPEG source images found.", file=sys.stderr)
         return 1
 
     entries: list[dict[str, int | str]] = []
@@ -101,11 +93,9 @@ def main() -> int:
 
     for source in sources:
         output = resolve_output_path(source)
-        if output is None:
-            continue
         try:
             encoded = encode_thumbnail(source)
-        except Exception as error:  # Keep the failing file visible in Actions logs.
+        except Exception as error:
             print(f"Failed to process {source.relative_to(REPO_ROOT)}: {error}", file=sys.stderr)
             return 1
 
