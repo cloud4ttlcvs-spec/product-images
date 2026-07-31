@@ -6,12 +6,12 @@ on:
     branches:
       - main
     paths:
-      - 'product-images/products/**'
-      - 'product-images/gifts/**'
-      - 'product-images/promotions/**'
-      - 'products/**'
-      - 'gifts/**'
-      - 'promotions/**'
+      - '**/*.png'
+      - '**/*.PNG'
+      - '**/*.jpg'
+      - '**/*.JPG'
+      - '**/*.jpeg'
+      - '**/*.JPEG'
       - 'scripts/generate_webp_thumbnails.py'
       - '.github/workflows/generate-webp-thumbnails.yml'
 
@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all -- '**/thumbs/**/*.webp' webp-thumbnail-manifest.json
+          git add --all -- ':(glob)**/thumbs/**/*.webp' webp-thumbnail-manifest.json
           if git diff --cached --quiet; then
             echo "No thumbnail changes."
             exit 0
